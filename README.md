@@ -72,7 +72,7 @@ button.secondary{background:#e9eef7;color:#24436e}
 
 <script>
 const SUPABASE_URL = "https://unisezzrzqvhcagoqwqw.supabase.co";
-const SUPABASE_KEY = "INSERISCI_QUI_LA_TUA_PUBLISHABLE_KEY";
+const SUPABASE_KEY = "sb_publishable_hsvNCbDm51ifV40rxS5alA_YCPoHjVq";
 const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const authBox=document.getElementById("auth");
