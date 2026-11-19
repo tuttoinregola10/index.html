@@ -1,1 +1,235 @@
 
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#172b4d">
+<title>Tutto in Regola</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#f3f5f9;color:#172b4d;font-family:Arial,sans-serif}
+header{background:#172b4d;color:white;padding:30px 22px;border-radius:0 0 25px 25px}
+header small{color:#cbd7e8;letter-spacing:1px}
+h1{font-size:28px;margin:12px 0 5px}
+main{max-width:650px;margin:auto;padding:20px}
+.card{background:white;padding:20px;border-radius:17px;margin-bottom:17px;box-shadow:0 3px 15px #00000008}
+h2{font-size:19px;margin:0 0 15px}
+input,select,button{width:100%;padding:14px;margin:6px 0;border:1px solid #dce2eb;border-radius:10px;font-size:16px}
+button{background:#2457a6;color:white;border:0;font-weight:bold}
+.secondary{background:#e9eef7;color:#24436e}
+.muted{color:#778399;font-size:13px}
+.item{padding:14px 0;border-bottom:1px solid #edf0f5}
+.item:last-child{border:0}
+.hidden{display:none}
+#message,#saveMessage{font-size:14px;color:#b23b3b}
+</style>
+</head>
+<body>
+
+<header>
+<small>DOCUMENTI · SCADENZE · PAGAMENTI</small>
+<h1>Tutto in Regola</h1>
+La tua vita, sempre sotto controllo.
+</header>
+
+<main>
+<section id="auth" class="card">
+<h2>Benvenuto!</h2>
+<p class="muted">Accedi o crea il tuo account personale.</p>
+<input id="email" type="email" placeholder="La tua email">
+<input id="password" type="password" placeholder="Password">
+<button id="login">Accedi</button>
+<button id="register" class="secondary">Crea un account</button>
+<p id="message"></p>
+</section>
+
+<section id="app" class="hidden">
+<div class="card">
+<h2>Le tue scadenze</h2>
+<p class="muted">Tutto quello che devi ricordare, in un unico posto.</p>
+<div id="reminders">Caricamento...</div>
+</div>
+
+<div class="card">
+<h2>+ Nuova scadenza</h2>
+<input id="title" placeholder="Es. Assicurazione auto">
+<select id="category">
+<option>Auto</option>
+<option>Casa</option>
+<option>Documenti</option>
+<option>Abbonamenti</option>
+<option>Altro</option>
+</select>
+<p class="muted">Data di scadenza</p>
+<input id="date" type="date">
+<input id="amount" type="number" step="0.01" placeholder="Importo in euro (facoltativo)">
+<button id="save">Salva scadenza</button>
+<p id="saveMessage"></p>
+</div>
+<button id="logout" class="secondary">Esci dal tuo account</button>
+</section>
+</main>
+
+<script>
+const SUPABASE_URL = "https://unisezzrzqvhcagoqwqw.supabase.co";
+const SUPABASE_KEY = " sb_publishable_hsvNCbDm51ifV40rxS5alA_YCPoHjVq";
+
+const db = window.supabase.createClient(
+  SUPABASE_URL,
+  SUPABASE_KEY
+);
+
+const $ = id => document.getElementById(id);
+
+function showAuth(){
+  $("auth").classList.remove("hidden");
+  $("app").classList.add("hidden");
+}
+
+async function refresh(){
+  const {data:{user}} = await db.auth.getUser();
+
+  if(!user){
+    showAuth();
+    return;
+  }
+
+  $("auth").classList.add("hidden");
+  $("app").classList.remove("hidden");
+  await loadReminders();
+}
+
+$("register").onclick = async () => {
+  const {error} = await db.auth.signUp({
+    email:$("email").value.trim(),
+    password:$("password").value
+  });
+
+  $("message").textContent = error
+    ? error.message
+    : "Registrazione inviata! Controlla la tua email per confermare.";
+};
+
+$("login").onclick = async () => {
+  const {error} = await db.auth.signInWithPassword({
+    email:$("email").value.trim(),
+    password:$("password").value
+  });
+
+  if(error){
+    $("message").textContent = error.message;
+    return;
+  }
+
+  await refresh();
+};
+
+$("logout").onclick = async () => {
+  await db.auth.signOut();
+  showAuth();
+};
+
+async function loadReminders(){
+  const list = $("reminders");
+  list.textContent = "Caricamento...";
+
+  const {data,error} = await db
+    .from("reminders")
+    .select("*")
+    .order("due_date",{ascending:true});
+
+  if(error){
+    list.textContent = "Errore: " + error.message;
+    return;
+  }
+
+  list.replaceChildren();
+
+  if(!data.length){
+    list.textContent = "Ancora nessuna scadenza. Aggiungine una!";
+    return;
+  }
+
+  data.forEach(r => {
+    const item = document.createElement("div");
+    item.className = "item";
+
+    const name = document.createElement("strong");
+    name.textContent = r.title;
+
+    const detail = document.createElement("p");
+    detail.className = "muted";
+    detail.textContent =
+      r.category + " · " + r.due_date +
+      (r.amount ? " · € " + r.amount : "");
+
+    const del = document.createElement("button");
+    del.className = "secondary";
+    del.textContent = "Elimina";
+    del.onclick = () => deleteReminder(r.id);
+
+    item.append(name,detail,del);
+    list.append(item);
+  });
+}
+
+$("save").onclick = async () => {
+  const {data:{user}} = await db.auth.getUser();
+
+  const title = $("title").value.trim();
+  const date = $("date").value;
+  const amount = $("amount").value;
+
+  if(!title || !date){
+    $("saveMessage").textContent =
+      "Inserisci il titolo e la data.";
+    return;
+  }
+
+  const {error} = await db.from("reminders").insert({
+    user_id:user.id,
+    title:title,
+    category:$("category").value,
+    due_date:date,
+    amount:amount ? Number(amount) : null
+  });
+
+  if(error){
+    $("saveMessage").textContent = error.message;
+    return;
+  }
+
+  $("title").value = "";
+  $("date").value = "";
+  $("amount").value = "";
+  $("saveMessage").textContent = "Scadenza salvata!";
+  await loadReminders();
+};
+
+async function deleteReminder(id){
+  const {error} = await db.from("reminders")
+    .delete().eq("id",id);
+
+  if(error){
+    alert(error.message);
+    return;
+  }
+
+  await loadReminders();
+}
+
+db.auth.onAuthStateChange((event,session) => {
+  if(session){
+    refresh();
+  }else{
+    showAuth();
+  }
+});
+
+refresh();
+</script>
+</body>
+</html>
+
